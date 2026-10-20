@@ -36,9 +36,9 @@ test "BinaryTreeStd basic tests" {
         tree = try IntTreeStd.insert(allocator, num, tree);
     }
 
-    try std.testing.expect(IntTreeStd.member2(4, tree, null) == true);
-    try std.testing.expect(IntTreeStd.member2(7, tree, null) == false);
-    try std.testing.expect(IntTreeStd.member2(5, tree, null) == true);
-    try std.testing.expect(IntTreeStd.member2(9, tree, null) == true);
-    try std.testing.expect(IntTreeStd.member2(0, tree, null) == false);
+    try std.testing.expect(IntTreeStd.member2(4, tree) == true);
+    try std.testing.expect(IntTreeStd.member2(7, tree) == false);
+    try std.testing.expect(IntTreeStd.member2(5, tree) == true);
+    try std.testing.expect(IntTreeStd.member2(9, tree) == true);
+    try std.testing.expect(IntTreeStd.member2(0, tree) == false);
 }

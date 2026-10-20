@@ -3,3 +3,4 @@ zig-out/
 output/
 plans/
 .agents/
+.DS_Store

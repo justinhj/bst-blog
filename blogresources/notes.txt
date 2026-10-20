@@ -1,0 +1,45 @@
+linkedin 
+
+https://www.linkedin.com/in/arne-andersson-01a106/?isSelfProfile=false
+
+VP Development
+Trade Extensions
+sold to 
+Coupa Software
+
+Uppsala University - Professor
+Lund University - Associate Professor
+
+https://user.it.uu.se/~arneande/index.html
+
+Plays the Trumpet
+
+
+PhD Thesis 
+A.Andersson. Efficient Search Trees.
+Ph.D. Thesis, Lund University, Sweden, 1990.
+
+The AA Tree: A specialized variation of a red-black balanced binary search tree named after him. It drastically simplifies the standard red-black tree insertion and deletion algorithms by introducing two strict, structural rules using Skew and Split rotations
+
+Two-Way Comparison Searching: A method that optimizes search operations within binary search trees by eliminating redundant equality checks until the search path reaches a leaf node.
+
+Computers
+Sun 3/180 - Sun Modula-2.2.2 compiler - REAL number type
+Vax/780 - Digital Ada compiler - DIGITS(18) number type
+IBM PS/2 55X (with math co-processor) - Turbo Pascal 5 - Double number type
+
+vax image https://www.computerhistory.org/revolution/mainframe-computers/7/182/736
+
+• Processor: Motorola 68020 running at 16.67 MHz Sun Hardware Reference Part 1
+• FPU: Motorola 68881 floating-point coprocessor Sun Hardware Reference Part 1
+• MMU: Proprietary Sun-3 Memory Management Unit (8 hardware contexts) Sun Hardware Reference Part 1
+• Performance: Approximately 2 MIPS Sun Hardware Reference Part 1
+• Chassis Type: Rackmount enclosure (essentially a rackmount version of the Sun 3/160) Sun Hardware Reference Part 1
+• Bus: VMEbus with 12 slots Sun Hardware Reference Part 1
+• Memory: 16 MB physical RAM documented (256 MB virtual memory) Sun Hardware Reference Part 1
+• Operating Systems: Supported SunOS versions (typically SunOS 3.x through 4.x) and community ports like NetBSD/sun3 NetBSD/sun3
+
+
+https://www.ibm.com/history/ps-2
+
+ps2 

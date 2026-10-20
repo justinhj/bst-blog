@@ -49,23 +49,47 @@ pub fn main(init: std.process.Init) !void {
         key.* = random.float(f32);
     }
 
+    const method_env = init.environ_map.get("METHOD") orelse "all";
+    const run_all = std.mem.eql(u8, method_env, "all");
+    const run_std = run_all or std.mem.eql(u8, method_env, "standard");
+    const run_sentinel = run_all or std.mem.eql(u8, method_env, "sentinel");
+    const run_two = run_all or std.mem.eql(u8, method_env, "twoway");
+    const run_three = run_all or std.mem.eql(u8, method_env, "threeway");
+
+    if (!run_std and !run_sentinel and !run_two and !run_three) {
+        std.debug.print("Error: Unknown METHOD '{s}'. Expected: all, standard, sentinel, twoway, threeway\n", .{method_env});
+        std.process.exit(1);
+    }
+
     // Build the tree to benchmark search on
     const IntTreeStd = bts_std.BinaryTreeStd(f32);
     var tree_std: IntTreeStd.Tree = null;
 
     const IntTreeSentinel = bts_sentinel.BinaryTreeSentinel(f32);
-    var tree_sentinel = try IntTreeSentinel.init(allocator);
+    var tree_sentinel: ?IntTreeSentinel = null;
+
+    if (run_sentinel) {
+        tree_sentinel = try IntTreeSentinel.init(allocator);
+    }
 
     if (balanced == 1) {
         std.mem.sort(f32, keys, {}, std.sort.asc(f32));
-        tree_std = try insertBalancedStd(allocator, keys, tree_std);
-        try insertBalancedSentinel(allocator, keys, &tree_sentinel);
-    } else {
-        for (keys) |key| {
-            tree_std = try IntTreeStd.insert(allocator, key, tree_std);
+        if (run_std or run_two or run_three) {
+            tree_std = try insertBalancedStd(allocator, keys, tree_std);
         }
-        for (keys) |key| {
-            try tree_sentinel.insert(allocator, key);
+        if (run_sentinel) {
+            try insertBalancedSentinel(allocator, keys, &tree_sentinel.?);
+        }
+    } else {
+        if (run_std or run_two or run_three) {
+            for (keys) |key| {
+                tree_std = try IntTreeStd.insert(allocator, key, tree_std);
+            }
+        }
+        if (run_sentinel) {
+            for (keys) |key| {
+                try tree_sentinel.?.insert(allocator, key);
+            }
         }
     }
 
@@ -73,68 +97,74 @@ pub fn main(init: std.process.Init) !void {
     const search_keys = try generateSearchKeys(allocator, random, num_iterations, num_elements, keys, successful_search);
     defer allocator.free(search_keys);
 
-    // Run the benchmarks
-    var std_hash: u32 = 0;
-    const std_start = std.Io.Clock.awake.now(io);
-    for (search_keys) |key| {
-        const found = IntTreeStd.member(key, tree_std);
-        const res = if (found) @as(u32, @bitCast(key)) else 0;
-        std_hash = std_hash *% 33 +% res;
-    }
-    const std_elapsed = std_start.untilNow(io, .awake).nanoseconds;
-
-    var sentinel_hash: u32 = 0;
-    const sentinel_start = std.Io.Clock.awake.now(io);
-    for (search_keys) |key| {
-        const found = tree_sentinel.member(key);
-        const res = if (found) @as(u32, @bitCast(key)) else 0;
-        sentinel_hash = sentinel_hash *% 33 +% res;
-    }
-    const sentinel_elapsed = sentinel_start.untilNow(io, .awake).nanoseconds;
-
-    var two_hash: u32 = 0;
-    const two_start = std.Io.Clock.awake.now(io);
-    for (search_keys) |key| {
-        const found = IntTreeStd.member2(key, tree_std);
-        const res = if (found) @as(u32, @bitCast(key)) else 0;
-        two_hash = two_hash *% 33 +% res;
-    }
-    const two_elapsed = two_start.untilNow(io, .awake).nanoseconds;
-
-    var three_hash: u32 = 0;
-    const three_start = std.Io.Clock.awake.now(io);
-    for (search_keys) |key| {
-        const found = IntTreeStd.member3(key, tree_std);
-        const res = if (found) @as(u32, @bitCast(key)) else 0;
-        three_hash = three_hash *% 33 +% res;
-    }
-    const three_elapsed = three_start.untilNow(io, .awake).nanoseconds;
-
-    // Output results
     std.debug.print("Benchmark Results:\n", .{});
     std.debug.print("  Tree Size: {d}\n", .{num_elements});
     std.debug.print("  Iterations: {d}\n\n", .{num_iterations});
 
-    std.debug.print("  Standard Search:  {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
-        @as(f64, @floatFromInt(std_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
-        @as(f64, @floatFromInt(std_elapsed)) / 1000.0,
-        std_hash,
-    });
-    std.debug.print("  Sentinel Search:  {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
-        @as(f64, @floatFromInt(sentinel_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
-        @as(f64, @floatFromInt(sentinel_elapsed)) / 1000.0,
-        sentinel_hash,
-    });
-    std.debug.print("  Two-Way Search:   {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
-        @as(f64, @floatFromInt(two_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
-        @as(f64, @floatFromInt(two_elapsed)) / 1000.0,
-        two_hash,
-    });
-    std.debug.print("  Three-Way Search: {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
-        @as(f64, @floatFromInt(three_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
-        @as(f64, @floatFromInt(three_elapsed)) / 1000.0,
-        three_hash,
-    });
+    // Run the benchmarks
+    if (run_std) {
+        var std_hash: u32 = 0;
+        const std_start = std.Io.Clock.awake.now(io);
+        for (search_keys) |key| {
+            const found = IntTreeStd.member(key, tree_std);
+            const res = if (found) @as(u32, @bitCast(key)) else 0;
+            std_hash = std_hash *% 33 +% res;
+        }
+        const std_elapsed = std_start.untilNow(io, .awake).nanoseconds;
+        std.debug.print("  Standard Search:  {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
+            @as(f64, @floatFromInt(std_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
+            @as(f64, @floatFromInt(std_elapsed)) / 1000.0,
+            std_hash,
+        });
+    }
+
+    if (run_sentinel) {
+        var sentinel_hash: u32 = 0;
+        const sentinel_start = std.Io.Clock.awake.now(io);
+        for (search_keys) |key| {
+            const found = tree_sentinel.?.member(key);
+            const res = if (found) @as(u32, @bitCast(key)) else 0;
+            sentinel_hash = sentinel_hash *% 33 +% res;
+        }
+        const sentinel_elapsed = sentinel_start.untilNow(io, .awake).nanoseconds;
+        std.debug.print("  Sentinel Search:  {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
+            @as(f64, @floatFromInt(sentinel_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
+            @as(f64, @floatFromInt(sentinel_elapsed)) / 1000.0,
+            sentinel_hash,
+        });
+    }
+
+    if (run_two) {
+        var two_hash: u32 = 0;
+        const two_start = std.Io.Clock.awake.now(io);
+        for (search_keys) |key| {
+            const found = IntTreeStd.member2(key, tree_std);
+            const res = if (found) @as(u32, @bitCast(key)) else 0;
+            two_hash = two_hash *% 33 +% res;
+        }
+        const two_elapsed = two_start.untilNow(io, .awake).nanoseconds;
+        std.debug.print("  Two-Way Search:   {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
+            @as(f64, @floatFromInt(two_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
+            @as(f64, @floatFromInt(two_elapsed)) / 1000.0,
+            two_hash,
+        });
+    }
+
+    if (run_three) {
+        var three_hash: u32 = 0;
+        const three_start = std.Io.Clock.awake.now(io);
+        for (search_keys) |key| {
+            const found = IntTreeStd.member3(key, tree_std);
+            const res = if (found) @as(u32, @bitCast(key)) else 0;
+            three_hash = three_hash *% 33 +% res;
+        }
+        const three_elapsed = three_start.untilNow(io, .awake).nanoseconds;
+        std.debug.print("  Three-Way Search: {d:.2} ns/op | Total: {d:.2} us (Hash: 0x{x})\n", .{
+            @as(f64, @floatFromInt(three_elapsed)) / @as(f64, @floatFromInt(num_iterations)),
+            @as(f64, @floatFromInt(three_elapsed)) / 1000.0,
+            three_hash,
+        });
+    }
 }
 
 fn insertBalancedStd(

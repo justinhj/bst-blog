@@ -8,21 +8,29 @@ import os
 import re
 import subprocess
 import statistics
-import cpuinfo
+try:
+    import cpuinfo
+    HAVE_CPUINFO = True
+except ImportError:
+    HAVE_CPUINFO = False
 
-# Get the full info dictionary
-info = cpuinfo.get_cpu_info()
-
-print("--- Detailed CPU Identifying Information ---")
-print(f"Brand/Model:     {info.get('brand_raw')}")
-print(f"Architecture:    {info.get('arch')}")
-bits = info.get('bits')
-print(f"Bits:            {bits}-bit" if bits else "Bits:            N/A")
-print(f"Advertised Hz:   {info.get('hz_advertised_friendly')}")
-print(f"Actual Hz:       {info.get('hz_actual_friendly')}")
-print(f"Vendor ID:       {info.get('vendor_id_raw')}")
-print(f"Physical Cores:  {info.get('count')}")
-print(f"CPU Flags/Features: {', '.join((info.get('flags') or [])[:10])}... (and more)")
+print("--- Host CPU & Architecture Information ---")
+if HAVE_CPUINFO:
+    info = cpuinfo.get_cpu_info()
+    print(f"Brand/Model:     {info.get('brand_raw')}")
+    print(f"Architecture:    {info.get('arch')}")
+    bits = info.get('bits')
+    print(f"Bits:            {bits}-bit" if bits else "Bits:            N/A")
+    print(f"Advertised Hz:   {info.get('hz_advertised_friendly')}")
+    print(f"Actual Hz:       {info.get('hz_actual_friendly')}")
+    print(f"Vendor ID:       {info.get('vendor_id_raw')}")
+    print(f"Physical Cores:  {info.get('count')}")
+    print(f"CPU Flags/Features: {', '.join((info.get('flags') or [])[:10])}... (and more)")
+else:
+    brand = subprocess.getoutput("sysctl -n machdep.cpu.brand_string")
+    cores = subprocess.getoutput("sysctl -n hw.physicalcpu")
+    print(f"Brand/Model:     {brand}")
+    print(f"Physical Cores:  {cores}")
 print()
 
 # Configuration
@@ -78,7 +86,7 @@ for combo in combinations:
             results[label]["Two-Way"].append(float(twoway_match.group(1)))
             results[label]["Three-Way"].append(float(threeway_match.group(1)))
         else:
-            print(f"Failed to parse run {run+1} for {label}: {output_text}")
+            print(f"Failed to parse run {run + 1} for {label}: {output_text}")
 
 # Print summary
 print("\n=== BENCHMARK SUMMARY (10 runs, N=5000, M=100000) ===\n")

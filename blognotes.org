@@ -1,4 +1,26 @@
 * Notes on the binary search blog post
+** Notes on the paper
+Re-run through the paper 
+
+Arne Andersson "A note on searching in a binary search tree"
+
+1991 before his paper AA trees 
+
+Summary
+
+Present a two-way comparisons algorithm for the BST search
+
+3 way comparison means < == or > 
+high level languages need to implement this as three comparisons
+unless you use asm or C++ <=> which can do a single compare and then branches
+
+andersson's method forces one (two-way) comparison per level only
+
+
+
+
+
+
 ** From gemini based on results
 Key Architectural Takeaways
 The Iterative Two-Way Breakthrough: In a perfectly balanced tree structure, the iterative Two-Way search is exceptionally fast at approximately 30 ns/op. By eliminating both stack frame overhead and memory write stalls (unlike Sentinel search), it allows modern out-of-order execution pipelines to fully exploit the single comparison per node.
@@ -11,8 +33,6 @@ The Cost of State: TCO struggled with the original Two-Way search because it pas
 
 ** Optimize away
 Are you planning to inspect the exact assembly diffs (via objdump or Godbolt) to see exactly how LLVM optimized away the optional candidate parameter during the Two-Way search refactor?
-
-
 ** Why floating point?
 Based on the text of the paper, the author **does not explicitly state** why floating-point data types (REAL, DOUBLE, DIGITS) were used for the keys. However, looking closely at the author's claims earlier in the paper, it becomes very clear why this choice was made.
 
