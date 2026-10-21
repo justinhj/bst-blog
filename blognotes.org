@@ -16,6 +16,11 @@ unless you use asm or C++ <=> which can do a single compare and then branches
 
 andersson's method forces one (two-way) comparison per level only
 
+** What Argon says 
+
+pretty cool...
+
+Where C++ Standard Library Stands: This exact algorithm is how std::map::lower_bound and std::set::find are typically implemented in standard library trees (like Red-Black trees). Standard library implementations walk all the way down using a single < comparison and a trailing pointer, then check for equality once at the end.
 
 
 

@@ -188,6 +188,18 @@ def main():
         default=["all"], help="Filter algorithm methods to run"
     )
     parser.add_argument(
+        "--string-keys", action="store_true",
+        help="Run the string-keys benchmark mode (sets STRING_KEYS=1)"
+    )
+    parser.add_argument(
+        "--key-len", type=int, default=64,
+        help="Key length in bytes for string-keys mode (default: 64)"
+    )
+    parser.add_argument(
+        "--prefixes", nargs="+", type=int, default=[0],
+        help="SHARED_PREFIX values to sweep in string-keys mode (default: 0)"
+    )
+    parser.add_argument(
         "--traces-dir", default="traces",
         help="Directory to save .trace files (default: traces)"
     )
@@ -226,6 +238,16 @@ def main():
     if "all" not in args.methods:
         selected_algos = [a for a in ALGORITHMS if a["name"] in args.methods]
 
+    # String-keys sweep setup: prefixes are swept as an orthogonal dimension.
+    # The binary requires KEY_LEN - SHARED_PREFIX >= 8; fail fast if violated.
+    string_keys = 1 if args.string_keys else 0
+    prefixes = args.prefixes if args.string_keys else [0]
+    if args.string_keys:
+        bad = [p for p in prefixes if p < 0 or p > args.key_len - 8]
+        if bad:
+            print(f"[ERROR] SHARED_PREFIX values {bad} need KEY_LEN - SHARED_PREFIX >= 8 (KEY_LEN={args.key_len})")
+            sys.exit(1)
+
     all_results = {}
 
     for combo in selected_combos:
@@ -239,82 +261,94 @@ def main():
             "variants": {},
         }
 
-        for algo in selected_algos:
-            a_name = algo["name"]
-            a_label = algo["label"]
-            trace_file = os.path.join(traces_dir, f"{c_slug}_{a_name}.trace")
-            stdout_file = os.path.join(traces_dir, f"{c_slug}_{a_name}.out")
-            xml_file = os.path.join(traces_dir, f"{c_slug}_{a_name}.xml")
+        for sp in prefixes:
+            if string_keys:
+                print(f"  --- SHARED_PREFIX={sp} (STRING_KEYS=1, KEY_LEN={args.key_len}) ---")
+            tag = f"_sp{sp}" if string_keys else ""
 
-            print(f"  -> Testing {a_label} ({a_name})...")
+            for algo in selected_algos:
+                a_name = algo["name"]
+                a_label = algo["label"]
+                vkey = f"{a_name}{tag}"
+                trace_file = os.path.join(traces_dir, f"{c_slug}_{a_name}{tag}.trace")
+                stdout_file = os.path.join(traces_dir, f"{c_slug}_{a_name}{tag}.out")
+                xml_file = os.path.join(traces_dir, f"{c_slug}_{a_name}{tag}.xml")
 
-            if not args.export_only:
-                # Remove existing trace bundle if present to prevent xctrace collision
-                if os.path.exists(trace_file):
-                    if os.path.isdir(trace_file):
-                        shutil.rmtree(trace_file)
-                    else:
-                        os.remove(trace_file)
+                print(f"  -> Testing {a_label} ({a_name})...")
 
-                record_cmd = [
-                    "xcrun", "xctrace", "record",
-                    "--template", "CPU Counters",
-                    "--time-limit", args.time_limit,
-                    "--output", trace_file,
-                    "--target-stdout", stdout_file,
-                    "--env", f"BALANCED={combo['balanced']}",
-                    "--env", f"SUCCESSFUL_SEARCH={combo['success']}",
-                    "--env", f"METHOD={a_name}",
-                    "--env", f"NUM_ELEMENTS={args.elements}",
-                    "--env", f"NUM_ITERATIONS={args.iterations}",
-                    "--launch", "--", binary_path
-                ]
+                if not args.export_only:
+                    # Remove existing trace bundle if present to prevent xctrace collision
+                    if os.path.exists(trace_file):
+                        if os.path.isdir(trace_file):
+                            shutil.rmtree(trace_file)
+                        else:
+                            os.remove(trace_file)
 
+                    record_cmd = [
+                        "xcrun", "xctrace", "record",
+                        "--template", "CPU Counters",
+                        "--time-limit", args.time_limit,
+                        "--output", trace_file,
+                        "--target-stdout", stdout_file,
+                        "--env", f"BALANCED={combo['balanced']}",
+                        "--env", f"SUCCESSFUL_SEARCH={combo['success']}",
+                        "--env", f"METHOD={a_name}",
+                        "--env", f"NUM_ELEMENTS={args.elements}",
+                        "--env", f"NUM_ITERATIONS={args.iterations}",
+                        "--env", f"STRING_KEYS={string_keys}",
+                        "--env", f"KEY_LEN={args.key_len}",
+                        "--env", f"SHARED_PREFIX={sp}",
+                        "--launch", "--", binary_path
+                    ]
+
+                    if args.dry_run:
+                        print("     [DRY-RUN] " + " ".join(record_cmd))
+                        continue
+
+                    rec_res = subprocess.run(record_cmd, capture_output=True, text=True)
+                    if rec_res.returncode != 0:
+                        print(f"     [ERROR] xctrace record failed: {rec_res.stderr}")
+                        continue
+
+                # Export XML metrics
                 if args.dry_run:
-                    print("     [DRY-RUN] " + " ".join(record_cmd))
+                    print(f"     [DRY-RUN] xcrun xctrace export --input {trace_file} ...")
                     continue
 
-                rec_res = subprocess.run(record_cmd, capture_output=True, text=True)
-                if rec_res.returncode != 0:
-                    print(f"     [ERROR] xctrace record failed: {rec_res.stderr}")
+                export_cmd = [
+                    "xcrun", "xctrace", "export",
+                    "--input", trace_file,
+                    "--xpath", '/trace-toc/run[@number="1"]/data/table[@schema="MetricAggregationForThread"]'
+                ]
+                exp_res = subprocess.run(export_cmd, capture_output=True, text=True)
+                if exp_res.returncode != 0:
+                    print(f"     [ERROR] xctrace export failed: {exp_res.stderr}")
                     continue
 
-            # Export XML metrics
-            if args.dry_run:
-                print(f"     [DRY-RUN] xcrun xctrace export --input {trace_file} ...")
-                continue
+                # Cache raw XML
+                with open(xml_file, "w", encoding="utf-8") as f:
+                    f.write(exp_res.stdout)
 
-            export_cmd = [
-                "xcrun", "xctrace", "export",
-                "--input", trace_file,
-                "--xpath", '/trace-toc/run[@number="1"]/data/table[@schema="MetricAggregationForThread"]'
-            ]
-            exp_res = subprocess.run(export_cmd, capture_output=True, text=True)
-            if exp_res.returncode != 0:
-                print(f"     [ERROR] xctrace export failed: {exp_res.stderr}")
-                continue
+                # Parse metrics
+                trace_metrics = parse_trace_xml(exp_res.stdout)
 
-            # Cache raw XML
-            with open(xml_file, "w", encoding="utf-8") as f:
-                f.write(exp_res.stdout)
+                # Read target stdout for timings and hash
+                bench_metrics = None
+                if os.path.exists(stdout_file):
+                    with open(stdout_file, "r", encoding="utf-8") as f:
+                        out_text = f.read()
+                        bench_metrics = parse_target_output(out_text, a_label)
 
-            # Parse metrics
-            trace_metrics = parse_trace_xml(exp_res.stdout)
-
-            # Read target stdout for timings and hash
-            bench_metrics = None
-            if os.path.exists(stdout_file):
-                with open(stdout_file, "r", encoding="utf-8") as f:
-                    out_text = f.read()
-                    bench_metrics = parse_target_output(out_text, a_label)
-
-            algo_data = {
-                "name": a_name,
-                "label": a_label,
-                "bench": bench_metrics,
-                "trace": trace_metrics,
-            }
-            all_results[c_slug]["variants"][a_name] = algo_data
+                algo_data = {
+                    "name": a_name,
+                    "label": a_label,
+                    "bench": bench_metrics,
+                    "trace": trace_metrics,
+                    "string_keys": string_keys,
+                    "key_len": args.key_len,
+                    "shared_prefix": sp,
+                }
+                all_results[c_slug]["variants"][vkey] = algo_data
 
         print()
 
@@ -336,49 +370,65 @@ def main():
             print("  No data available.\n")
             continue
 
-        std_time = None
-        if "standard" in variants and variants["standard"]["bench"]:
-            std_time = variants["standard"]["bench"]["ns_per_op"]
+        # Group variants by shared prefix so "vs std" only ever compares
+        # runs with the same key-generation config. In f32 mode there is a
+        # single group (prefix 0) and the table is unchanged.
+        groups = {}
+        for vkey, a_info in variants.items():
+            groups.setdefault(a_info.get("shared_prefix", 0), []).append((vkey, a_info))
 
-        headers = f"{'Variant':16} {'ns/op':>8} {'vs std':>8} {'Cycles':>12} {'Useful':>8} {'Discarded':>10} {'Delivery':>9} {'Hash':>11}"
-        print(headers)
-        print("-" * len(headers))
+        for sp, grp in sorted(groups.items()):
+            if string_keys:
+                print(f"  SHARED_PREFIX={sp}")
 
-        for a_name, a_info in variants.items():
-            b = a_info["bench"]
-            t = a_info["trace"]
-            ns_op_str = f"{b['ns_per_op']:8.2f}" if b else "N/A"
-            hash_str = b['hash'] if b else "N/A"
-            
-            if b and std_time and std_time > 0:
-                # relative speedup/slowdown ratio (higher ops/sec -> lower ns/op is better)
-                ratio = std_time / b["ns_per_op"]
-                vs_std = f"{ratio:7.2f}x"
-            else:
-                vs_std = "   1.00x" if a_name == "standard" else "     N/A"
+            std_time = None
+            std_key = f"standard_sp{sp}" if string_keys else "standard"
+            if std_key in variants and variants[std_key]["bench"]:
+                std_time = variants[std_key]["bench"]["ns_per_op"]
 
-            cycles_str = f"{t['cycles']:,}" if t["cycles"] > 0 else "N/A"
-            useful_str = f"{t['useful_mean']:.3f}"
-            discard_str = f"{t['discarded_mean']:.3f}"
-            delivery_str = f"{t['delivery_mean']:.3f}"
+            headers = f"{'Variant':16} {'ns/op':>8} {'vs std':>8} {'Cycles':>12} {'Useful':>8} {'Discarded':>10} {'Delivery':>9} {'Hash':>11}"
+            print(headers)
+            print("-" * len(headers))
 
-            print(f"{a_info['label']:16} {ns_op_str} {vs_std} {cycles_str:>12} {useful_str:>8} {discard_str:>10} {delivery_str:>9} {hash_str:>11}")
+            for vkey, a_info in grp:
+                a_name = a_info["name"]
+                b = a_info["bench"]
+                t = a_info["trace"]
+                ns_op_str = f"{b['ns_per_op']:8.2f}" if b else "N/A"
+                hash_str = b['hash'] if b else "N/A"
 
-            flat_records.append({
-                "scenario": c_info["label"],
-                "balanced": c_info["balanced"],
-                "success_percent": c_info["success"],
-                "variant": a_info["label"],
-                "algorithm": a_name,
-                "ns_per_op": b["ns_per_op"] if b else None,
-                "vs_std": (std_time / b["ns_per_op"]) if (b and std_time and std_time > 0) else 1.0,
-                "cycles": t["cycles"],
-                "useful_metric": t["useful_mean"],
-                "discarded_metric": t["discarded_mean"],
-                "delivery_metric": t["delivery_mean"],
-                "processing_metric": t["processing_mean"],
-                "hash": b["hash"] if b else None,
-            })
+                if b and std_time and std_time > 0:
+                    # relative speedup/slowdown ratio (higher ops/sec -> lower ns/op is better)
+                    ratio = std_time / b["ns_per_op"]
+                    vs_std = f"{ratio:7.2f}x"
+                else:
+                    vs_std = "   1.00x" if a_name == "standard" else "     N/A"
+
+                cycles_str = f"{t['cycles']:,}" if t["cycles"] > 0 else "N/A"
+                useful_str = f"{t['useful_mean']:.3f}"
+                discard_str = f"{t['discarded_mean']:.3f}"
+                delivery_str = f"{t['delivery_mean']:.3f}"
+
+                print(f"{a_info['label']:16} {ns_op_str} {vs_std} {cycles_str:>12} {useful_str:>8} {discard_str:>10} {delivery_str:>9} {hash_str:>11}")
+
+                flat_records.append({
+                    "scenario": c_info["label"],
+                    "balanced": c_info["balanced"],
+                    "success_percent": c_info["success"],
+                    "string_keys": string_keys,
+                    "key_len": a_info.get("key_len", 0),
+                    "shared_prefix": a_info.get("shared_prefix", 0),
+                    "variant": a_info["label"],
+                    "algorithm": a_name,
+                    "ns_per_op": b["ns_per_op"] if b else None,
+                    "vs_std": (std_time / b["ns_per_op"]) if (b and std_time and std_time > 0) else 1.0,
+                    "cycles": t["cycles"],
+                    "useful_metric": t["useful_mean"],
+                    "discarded_metric": t["discarded_mean"],
+                    "delivery_metric": t["delivery_mean"],
+                    "processing_metric": t["processing_mean"],
+                    "hash": b["hash"] if b else None,
+                })
         print()
 
     # Save to JSON
