@@ -35,6 +35,8 @@ print()
 
 # Configuration
 num_runs = 10
+num_elements = 2000000
+num_iterations = 2000000
 combinations = [
     {"balanced": 0, "success": 100, "label": "Random Tree, Successful Search"},
     {"balanced": 0, "success": 0, "label": "Random Tree, Unsuccessful Search"},
@@ -61,8 +63,8 @@ for combo in combinations:
         env = os.environ.copy()
         env["BALANCED"] = str(combo["balanced"])
         env["SUCCESSFUL_SEARCH"] = str(combo["success"])
-        env["NUM_ELEMENTS"] = "5000"
-        env["NUM_ITERATIONS"] = "100000"
+        env["NUM_ELEMENTS"] = str(num_elements)
+        env["NUM_ITERATIONS"] = str(num_iterations)
         
         # Run the compiled Zig binary
         res = subprocess.run(
@@ -89,7 +91,7 @@ for combo in combinations:
             print(f"Failed to parse run {run + 1} for {label}: {output_text}")
 
 # Print summary
-print("\n=== BENCHMARK SUMMARY (10 runs, N=5000, M=100000) ===\n")
+print(f"\n=== BENCHMARK SUMMARY ({num_runs} runs, N={num_elements}, M={num_iterations}) ===\n")
 for label, data in results.items():
     print(f"--- {label} ---")
     for method, times in data.items():
