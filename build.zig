@@ -109,6 +109,31 @@ pub fn build(b: *std.Build) void {
     // installation directory rather than directly from within the cache directory.
     run_cmd.step.dependOn(b.getInstallStep());
 
+<<<<<<< HEAD
+    const zmida = b.dependency("zmida", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("zmida", zmida.module("zmida"));
+
+    // zmida-based benchmark executable
+    const bench_exe = b.addExecutable(.{
+        .name = "bst-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/zmida_bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zigtree", .module = mod },
+                .{ .name = "zmida", .module = zmida.module("zmida") },
+            },
+        }),
+    });
+    b.installArtifact(bench_exe);
+
+    // Run step for the bench
+    const bench_step = b.step("bench", "Run zmida BST benchmarks");
+    const bench_cmd = b.addRunArtifact(bench_exe);
+    bench_step.dependOn(&bench_cmd.step);
+    bench_cmd.step.dependOn(b.getInstallStep());
+     
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
     run_cmd.addPassthruArgs();
